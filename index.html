@@ -14,10 +14,10 @@
             <img class="brand-mark" src="assets/img/umg.png" alt="Logo UMG" />
             <div class="brand-copy">
               <p class="brand-name">NEBULA IDE</p>
-              <p class="brand-tagline">Traductor visual de seudocodigo a Java</p>
+              <p class="brand-tagline">Traductor visual de pseudocódigo a Java</p>
             </div>
           </div>
-          <h1>Domina Java a través del seudocódigo</h1>
+          <h1>Domina Java a través del pseudocódigo</h1>
           <p class="hero-copy">
             Redacta tu lógica a la izquierda y observa la traducción automática a la derecha. 
             Te ofreceremos sugerencias de estructura en tiempo real para perfeccionar tu programa.
@@ -84,27 +84,6 @@
               </div>
               <pre id="terminal-output" class="terminal-box empty">Pulsa "Probar backend" para compilar y ejecutar el Java aqui.</pre>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="summary-grid">
-          <div class="summary-item">
-            <div class="summary-label">Estado</div>
-            <div class="summary-value" id="compile-status">Esperando prueba</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-label">Lineas</div>
-            <div class="summary-value" id="line-count">0</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-label">Caracteres</div>
-            <div class="summary-value" id="char-count">0</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-label">Tokens</div>
-            <div class="summary-value" id="token-count">0</div>
           </div>
         </div>
       </section>
@@ -248,28 +227,28 @@ FinAlgoritmo</code></pre>
       </div>
 
       <section class="lower-grid">
-        <div class="card">
+        <div class="card history-card">
           <div class="card-head">
             <div>
-              <h3>Historial Local</h3>
-              <span>Guardado en tu navegador</span>
+              <h3>Historial</h3>
             </div>
             <button class="secondary small" id="clear-history-button">Limpiar historial</button>
           </div>
-          <ul id="history-list" class="history-list"></ul>
+          <div class="history-scroll">
+            <ul id="history-list" class="history-list"></ul>
+          </div>
         </div>
 
-        <div class="card">
+        <div class="card support-card">
           <div class="card-head">
             <div>
               <h3>Resultados de Apoyo</h3>
-              <span>Errores, tokens y AST</span>
             </div>
-          </div>
-          <div class="result-tabs">
-            <button class="secondary small tab active" data-tab="errors">Errores</button>
-            <button class="secondary small tab" data-tab="tokens">Tokens</button>
-            <button class="secondary small tab" data-tab="ast">AST</button>
+            <div class="result-tabs">
+              <button class="secondary small tab active" data-tab="errors">Errores</button>
+              <button class="secondary small tab" data-tab="tokens">Tokens</button>
+              <button class="secondary small tab" data-tab="ast">AST</button>
+            </div>
           </div>
           <div class="tab-panel active" data-panel="errors">
             <pre id="error-output" class="codebox mini-box empty">Todavia no hay errores ni resultados.</pre>

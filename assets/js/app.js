@@ -74,11 +74,6 @@ FinAlgoritmo`,
       const historyList = document.getElementById('history-list');
       const backendStatus = document.getElementById('backend-status');
       const draftState = document.getElementById('draft-state');
-      const compileStatus = document.getElementById('compile-status');
-      const lineCount = document.getElementById('line-count');
-      const charCount = document.getElementById('char-count');
-      const tokenCount = document.getElementById('token-count');
-
       let lastResult = null;
 
       function formatJson(value) {
@@ -281,8 +276,6 @@ FinAlgoritmo`,
 
       function handleEditorChange() {
         const value = codeInput.value;
-        lineCount.textContent = String(value ? value.split('\\n').length : 0);
-        charCount.textContent = String(value.length);
         localStorage.setItem(draftKey, value);
         draftState.textContent = 'guardado automatico';
         updateSuggestions();
@@ -315,8 +308,6 @@ FinAlgoritmo`,
         lastResult = result;
 
         if (result.ok) {
-          compileStatus.textContent = 'Compilacion correcta';
-          tokenCount.textContent = String(result.tokens?.length || 0);
           tokensOutput.textContent = formatJson(result.tokens || []);
           tokensOutput.className = 'codebox mini-box';
           astOutput.textContent = formatJson(result.ast || {});
@@ -328,8 +319,6 @@ FinAlgoritmo`,
           resetTerminal();
           autoSaveHistory();
         } else {
-          compileStatus.textContent = 'Compilacion con error';
-          tokenCount.textContent = '0';
           tokensOutput.textContent = 'No disponible por error.';
           tokensOutput.className = 'codebox mini-box empty';
           astOutput.textContent = 'No disponible por error.';
@@ -396,7 +385,6 @@ FinAlgoritmo`,
         const java = (lastResult?.java || javaOutput.textContent || '').trim();
 
         if (!java || java === 'Compila para ver el Java generado.' || java === 'No se genero Java.') {
-          compileStatus.textContent = 'Primero compila';
           if (terminalStatus && terminalOutput) {
             terminalStatus.textContent = 'Sin codigo Java listo para ejecutar.';
             terminalOutput.textContent = 'Primero pulsa "Compilar" para generar el archivo Java.';
@@ -426,20 +414,17 @@ FinAlgoritmo`,
           const result = await response.json();
 
           if (result.ok) {
-            compileStatus.textContent = 'Java ejecutado';
             terminalStatus.textContent = result.status || 'Ejecucion completada.';
             terminalOutput.textContent = result.output?.trim()
               ? result.output
               : 'El programa se ejecuto sin imprimir salida.';
             terminalOutput.className = 'terminal-box success';
           } else {
-            compileStatus.textContent = 'Error al ejecutar Java';
             terminalStatus.textContent = result.status || 'No se pudo ejecutar el programa.';
             terminalOutput.textContent = result.error || 'El backend no pudo compilar o ejecutar el Java.';
             terminalOutput.className = 'terminal-box error';
           }
         } catch {
-          compileStatus.textContent = 'Sin conexion con ejecucion';
           terminalStatus.textContent = 'No se pudo contactar el backend.';
           terminalOutput.textContent = 'Asegurate de tener el backend corriendo en localhost:3000 y de haber agregado el endpoint de ejecucion.';
           terminalOutput.className = 'terminal-box error';
