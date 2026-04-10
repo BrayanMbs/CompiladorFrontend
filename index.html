@@ -57,8 +57,22 @@
           </div>
 
           <div class="editor-frame">
+            <div class="line-panel editor-panel">
+              <div class="panel-chrome">
+                <div class="panel-controls" aria-hidden="true">
+                  <span class="panel-dot red"></span>
+                  <span class="panel-dot amber"></span>
+                  <span class="panel-dot green"></span>
+                </div>
+                <div class="panel-tab">main.nebula</div>
+                <div class="panel-lang">Pseudocodigo</div>
+              </div>
+              <div class="panel-body">
+                <pre id="code-lines" class="line-numbers" aria-hidden="true">1</pre>
+                <textarea id="code-input" class="codebox codebox-editor" spellcheck="false"></textarea>
+              </div>
+            </div>
             <div id="suggestions-list" class="inline-suggestion" aria-live="polite"></div>
-            <textarea id="code-input" class="codebox" spellcheck="false"></textarea>
           </div>
         </div>
 
@@ -74,7 +88,21 @@
             </div>
           </div>
           <div class="result-scroll">
-            <pre id="java-output" class="codebox output-codebox empty">Compila para ver el Java generado.</pre>
+            <div class="line-panel output-panel">
+              <div class="panel-chrome">
+                <div class="panel-controls" aria-hidden="true">
+                  <span class="panel-dot red"></span>
+                  <span class="panel-dot amber"></span>
+                  <span class="panel-dot green"></span>
+                </div>
+                <div class="panel-tab">Main.java</div>
+                <div class="panel-lang">Java</div>
+              </div>
+              <div class="panel-body">
+                <pre id="java-lines" class="line-numbers" aria-hidden="true">1</pre>
+                <pre id="java-output" class="codebox output-codebox empty">Compila para ver el Java generado.</pre>
+              </div>
+            </div>
             <div class="terminal-panel" id="terminal-panel" hidden>
               <div class="terminal-head">
                 <div>

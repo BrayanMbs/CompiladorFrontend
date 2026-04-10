@@ -51,6 +51,9 @@ FinAlgoritmo`,
       ];
 
       const codeInput = document.getElementById('code-input');
+      const editorPanel = document.querySelector('.editor-panel');
+      const codeLines = document.getElementById('code-lines');
+      const javaLines = document.getElementById('java-lines');
       const javaOutput = document.getElementById('java-output');
       const terminalPanel = document.getElementById('terminal-panel');
       const terminalOutput = document.getElementById('terminal-output');
@@ -78,6 +81,42 @@ FinAlgoritmo`,
 
       function formatJson(value) {
         return JSON.stringify(value, null, 2);
+      }
+
+      function getLineNumbersText(content) {
+        const lineCount = Math.max(content.split('\n').length, 1);
+        return Array.from({ length: lineCount }, (_, index) => index + 1).join('\n');
+      }
+
+      function syncLineNumbers(content, linesElement) {
+        if (!linesElement) {
+          return;
+        }
+
+        linesElement.textContent = getLineNumbersText(content);
+      }
+
+      function syncScroll(sourceElement, linesElement) {
+        if (!sourceElement || !linesElement) {
+          return;
+        }
+
+        linesElement.scrollTop = sourceElement.scrollTop;
+      }
+
+      function updateEditorActiveLine() {
+        if (!codeInput || !editorPanel) {
+          return;
+        }
+
+        const caretIndex = codeInput.selectionStart || 0;
+        const activeLine = codeInput.value.slice(0, caretIndex).split('\n').length;
+        const lineHeight = parseFloat(getComputedStyle(codeInput).lineHeight) || 24;
+        const paddingTop = parseFloat(getComputedStyle(codeInput).paddingTop) || 18;
+        const offset = paddingTop + ((activeLine - 1) * lineHeight) - codeInput.scrollTop;
+
+        editorPanel.style.setProperty('--active-line-offset', `${offset}px`);
+        editorPanel.style.setProperty('--active-line-height', `${lineHeight}px`);
       }
 
       function setExample(code) {
@@ -278,6 +317,8 @@ FinAlgoritmo`,
         const value = codeInput.value;
         localStorage.setItem(draftKey, value);
         draftState.textContent = 'guardado automatico';
+        syncLineNumbers(value, codeLines);
+        updateEditorActiveLine();
         updateSuggestions();
       }
 
@@ -290,6 +331,8 @@ FinAlgoritmo`,
         errorOutput.className = 'codebox mini-box empty';
         javaOutput.textContent = 'Compila para ver el Java generado.';
         javaOutput.className = 'codebox output-codebox empty';
+        syncLineNumbers(javaOutput.textContent, javaLines);
+        syncScroll(javaOutput, javaLines);
         resetTerminal();
       }
 
@@ -316,6 +359,8 @@ FinAlgoritmo`,
           javaOutput.className = 'codebox output-codebox';
           errorOutput.textContent = 'Sin errores. El backend acepto el programa.';
           errorOutput.className = 'codebox mini-box';
+          syncLineNumbers(javaOutput.textContent, javaLines);
+          syncScroll(javaOutput, javaLines);
           resetTerminal();
           autoSaveHistory();
         } else {
@@ -327,6 +372,8 @@ FinAlgoritmo`,
           javaOutput.className = 'codebox output-codebox empty';
           errorOutput.textContent = result.error || 'Error desconocido.';
           errorOutput.className = 'codebox mini-box';
+          syncLineNumbers(javaOutput.textContent, javaLines);
+          syncScroll(javaOutput, javaLines);
           resetTerminal();
         }
       }
@@ -568,6 +615,14 @@ FinAlgoritmo`,
         }, 1100);
       });
       codeInput.addEventListener('input', handleEditorChange);
+      codeInput.addEventListener('scroll', () => {
+        syncScroll(codeInput, codeLines);
+        updateEditorActiveLine();
+      });
+      codeInput.addEventListener('click', updateEditorActiveLine);
+      codeInput.addEventListener('keyup', updateEditorActiveLine);
+      codeInput.addEventListener('focus', updateEditorActiveLine);
+      javaOutput.addEventListener('scroll', () => syncScroll(javaOutput, javaLines));
       codeInput.addEventListener('keydown', (event) => {
         if (event.ctrlKey && event.key === 'Enter') {
           event.preventDefault();
@@ -585,5 +640,7 @@ FinAlgoritmo`,
       renderHistory();
       setIdleOutputs();
       handleEditorChange();
+      syncScroll(codeInput, codeLines);
+      updateEditorActiveLine();
       checkBackend();
 
