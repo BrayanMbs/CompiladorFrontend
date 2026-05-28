@@ -274,12 +274,21 @@ FinAlgoritmo</code></pre>
             </div>
             <div class="result-tabs">
               <button class="secondary small tab active" data-tab="errors">Errores</button>
+              <button class="secondary small tab" data-tab="symbols">Simbolos</button>
+              <button class="secondary small tab" data-tab="tree">Arbol</button>
               <button class="secondary small tab" data-tab="tokens">Tokens</button>
               <button class="secondary small tab" data-tab="ast">AST</button>
+              <button class="secondary small" id="download-tree-button" type="button" hidden>Descargar Arbol</button>
             </div>
           </div>
           <div class="tab-panel active" data-panel="errors">
             <pre id="error-output" class="codebox mini-box empty">Todavia no hay errores ni resultados.</pre>
+          </div>
+          <div class="tab-panel" data-panel="symbols">
+            <div id="symbols-output" class="symbols-table empty">Compila para ver la tabla de simbolos.</div>
+          </div>
+          <div class="tab-panel" data-panel="tree">
+            <div id="tree-output" class="ast-tree empty">Compila para ver el arbol sintactico.</div>
           </div>
           <div class="tab-panel" data-panel="tokens">
             <pre id="tokens-output" class="codebox mini-box empty">Compila para ver los tokens.</pre>

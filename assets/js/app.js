@@ -61,6 +61,8 @@ FinAlgoritmo`,
       const tokensOutput = document.getElementById('tokens-output');
       const astOutput = document.getElementById('ast-output');
       const errorOutput = document.getElementById('error-output');
+      const symbolsOutput = document.getElementById('symbols-output');
+      const treeOutput = document.getElementById('tree-output');
       const compileButton = document.getElementById('compile-button');
       const healthButton = document.getElementById('health-button');
       const copyJavaButton = document.getElementById('copy-java-button');
@@ -72,6 +74,7 @@ FinAlgoritmo`,
       const rulesButton = document.getElementById('rules-button');
       const rulesModal = document.getElementById('rules-modal');
       const rulesCloseButton = document.getElementById('rules-close-button');
+      const downloadTreeButton = document.getElementById('download-tree-button');
       const rulesTabs = document.querySelectorAll('.rules-tab');
       const suggestionsList = document.getElementById('suggestions-list');
       const historyList = document.getElementById('history-list');
@@ -114,9 +117,947 @@ FinAlgoritmo`,
         const lineHeight = parseFloat(getComputedStyle(codeInput).lineHeight) || 24;
         const paddingTop = parseFloat(getComputedStyle(codeInput).paddingTop) || 18;
         const offset = paddingTop + ((activeLine - 1) * lineHeight) - codeInput.scrollTop;
+        const errorLine = Number(editorPanel.dataset.errorLine || 0);
 
         editorPanel.style.setProperty('--active-line-offset', `${offset}px`);
         editorPanel.style.setProperty('--active-line-height', `${lineHeight}px`);
+
+        if (errorLine > 0) {
+          const errorOffset = paddingTop + ((errorLine - 1) * lineHeight) - codeInput.scrollTop;
+          editorPanel.style.setProperty('--error-line-offset', `${errorOffset}px`);
+          editorPanel.style.setProperty('--error-line-height', `${lineHeight}px`);
+        }
+      }
+
+      function setEditorErrorLine(line) {
+        if (!editorPanel || !line) {
+          clearEditorErrorLine();
+          return;
+        }
+
+        editorPanel.dataset.errorLine = String(line);
+        editorPanel.classList.add('has-error-line');
+        updateEditorActiveLine();
+      }
+
+      function clearEditorErrorLine() {
+        if (!editorPanel) {
+          return;
+        }
+
+        delete editorPanel.dataset.errorLine;
+        editorPanel.classList.remove('has-error-line');
+        editorPanel.style.removeProperty('--error-line-offset');
+        editorPanel.style.removeProperty('--error-line-height');
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function getSourceLine(lineNumber) {
+        if (!codeInput || !lineNumber) {
+          return '';
+        }
+
+        return codeInput.value.split('\n')[lineNumber - 1]?.trim() || '';
+      }
+
+      function findLineNumber(predicate) {
+        if (!codeInput) {
+          return undefined;
+        }
+
+        const sourceLines = codeInput.value.split('\n');
+        const index = sourceLines.findIndex((line) => predicate(line.trim()));
+        return index >= 0 ? index + 1 : undefined;
+      }
+
+      function findLastCodeLineNumber() {
+        if (!codeInput) {
+          return undefined;
+        }
+
+        const sourceLines = codeInput.value.split('\n');
+        for (let index = sourceLines.length - 1; index >= 0; index--) {
+          if (sourceLines[index].trim()) {
+            return index + 1;
+          }
+        }
+
+        return undefined;
+      }
+
+      function getSyntaxSuggestion(line) {
+        const trimmed = line.trim();
+
+        if (!trimmed) {
+          return null;
+        }
+
+        const validPatterns = [
+          /^Algoritmo\s+[A-Za-z][A-Za-z0-9]*$/,
+          /^FinAlgoritmo$/,
+          /^Definir\s+[A-Za-z][A-Za-z0-9]*\s+Como\s+(Entero|Real|Cadena|Logico)$/,
+          /^[A-Za-z][A-Za-z0-9]*\s*<-\s+.+$/,
+          /^Escribir\s+.+$/,
+          /^Si\s+.+\s+(==|!=|<=|>=|<|>)\s+.+\s+Entonces$/,
+          /^Sino$/,
+          /^FinSi$/,
+          /^Mientras\s+.+\s+(==|!=|<=|>=|<|>)\s+.+\s+Hacer$/,
+          /^FinMientras$/,
+          /^Hacer$/,
+          /^Para\s+[A-Za-z][A-Za-z0-9]*\s*<-\s+.+\s+Hasta\s+.+\s+Hacer$/,
+          /^FinPara$/,
+          /^Segun\s+.+\s+Hacer$/,
+          /^Caso\s+.+$/,
+          /^Defecto$/,
+          /^FinSegun$/,
+          /^Funcion\s+[A-Za-z][A-Za-z0-9]*\s*\(.*\)\s+Como\s+(Entero|Real|Cadena|Logico|Vacio)$/,
+          /^FinFuncion$/,
+          /^Retornar\s+.+$/,
+        ];
+
+        if (validPatterns.some((pattern) => pattern.test(trimmed))) {
+          return null;
+        }
+
+        const firstWord = trimmed.split(/\s+/)[0] || '';
+        const lowerWord = firstWord.toLowerCase();
+        const closestKeyword = findClosestKeyword(lowerWord);
+
+        if (/^[A-Za-z][A-Za-z0-9]*\s*=/.test(trimmed)) {
+          return 'En NEBULA la asignacion usa <-, no =. Ejemplo correcto: x <- 10.';
+        }
+
+        if (/^[A-Za-z][A-Za-z0-9]*\s+<-/.test(trimmed)) {
+          return 'Antes de <- debe ir solo el nombre de la variable. Ejemplo correcto: x <- 10.';
+        }
+
+        if ('algoritmo'.startsWith(lowerWord) || lowerWord.startsWith('algoritm')) {
+          return 'Escribe el encabezado asi: Algoritmo NombreDelPrograma.';
+        }
+
+        if ('finalgoritmo'.startsWith(lowerWord) || lowerWord.startsWith('finalgoritm')) {
+          return 'Cierra el programa exactamente asi: FinAlgoritmo.';
+        }
+
+        if ('finsi'.startsWith(lowerWord) || lowerWord.startsWith('finsi')) {
+          return 'FinSi solo cierra un bloque iniciado con: Si condicion Entonces.';
+        }
+
+        if ('finmientras'.startsWith(lowerWord) || lowerWord.startsWith('finmientras')) {
+          return 'FinMientras solo cierra un ciclo iniciado con: Mientras condicion Hacer.';
+        }
+
+        if ('finpara'.startsWith(lowerWord) || lowerWord.startsWith('finpara')) {
+          return 'FinPara solo cierra un ciclo iniciado con: Para i <- inicio Hasta fin Hacer.';
+        }
+
+        if ('finsegun'.startsWith(lowerWord) || lowerWord.startsWith('finsegun')) {
+          return 'FinSegun solo cierra una estructura iniciada con: Segun expresion Hacer.';
+        }
+
+        if ('finfuncion'.startsWith(lowerWord) || lowerWord.startsWith('finfuncion')) {
+          return 'FinFuncion solo cierra una funcion iniciada con: Funcion Nombre(...) Como Tipo.';
+        }
+
+        if (closestKeyword) {
+          if (closestKeyword === 'FinMientras') {
+            return `No se reconoce "${firstWord}". Si querias cerrar un ciclo Mientras, escribe exactamente FinMientras. Si estas usando Hacer, no lleva FinMientras: termina con una linea como Mientras intentos <= 3.`;
+          }
+
+          return `No se reconoce "${firstWord}". Quiza quisiste escribir ${closestKeyword}. Revisa la palabra reservada y escribela exactamente igual.`;
+        }
+
+        if (/^[A-Za-z][A-Za-z0-9]*$/.test(trimmed)) {
+          return `La linea "${trimmed}" no es una instruccion completa. Si quieres asignar, usa: ${trimmed} <- valor.`;
+        }
+
+        if ('definir'.startsWith(lowerWord) || lowerWord.startsWith('defin')) {
+          if (!trimmed.includes(' Como ')) {
+            return 'A la declaracion le falta Como. Usa: Definir variable Como Tipo.';
+          }
+
+          return 'Declara variables asi: Definir variable Como Entero. Tipos validos: Entero, Real, Cadena, Logico.';
+        }
+
+        if ('escribir'.startsWith(lowerWord) || lowerWord.startsWith('escri')) {
+          return 'Para imprimir usa: Escribir expresion. Ejemplo: Escribir x.';
+        }
+
+        if ('si'.startsWith(lowerWord)) {
+          return 'La condicion debe escribirse asi: Si x >= 10 Entonces. Debe incluir operador relacional y la palabra Entonces.';
+        }
+
+        if ('mientras'.startsWith(lowerWord) || lowerWord.startsWith('mient')) {
+          return 'El ciclo debe escribirse asi: Mientras x < 10 Hacer. Debe terminar con Hacer.';
+        }
+
+        if ('para'.startsWith(lowerWord)) {
+          return 'El ciclo Para debe escribirse asi: Para i <- 1 Hasta 10 Hacer. Debe incluir <-, Hasta y Hacer.';
+        }
+
+        if ('segun'.startsWith(lowerWord) || lowerWord.startsWith('seg')) {
+          return 'La estructura debe escribirse asi: Segun opcion Hacer. Los casos van como: Caso 1.';
+        }
+
+        if ('caso'.startsWith(lowerWord)) {
+          return 'Un caso debe escribirse asi: Caso 1.';
+        }
+
+        if ('funcion'.startsWith(lowerWord) || lowerWord.startsWith('func')) {
+          return 'La funcion debe escribirse asi: Funcion Nombre(param Como Tipo) Como Tipo. Ejemplo: Funcion Sumar(a Como Entero) Como Entero.';
+        }
+
+        if ('retornar'.startsWith(lowerWord) || lowerWord.startsWith('ret')) {
+          return 'El retorno debe escribirse asi: Retornar expresion.';
+        }
+
+        return `No se reconoce la instruccion "${firstWord}". Revisa si la palabra reservada esta mal escrita o usa una regla valida: Definir, Escribir, Si, Mientras, Para, Segun, Funcion o Retornar.`;
+      }
+
+      function findClosestKeyword(word) {
+        if (!word) {
+          return null;
+        }
+
+        const keywords = [
+          'Algoritmo',
+          'FinAlgoritmo',
+          'Definir',
+          'Escribir',
+          'Si',
+          'Sino',
+          'FinSi',
+          'Mientras',
+          'FinMientras',
+          'Hacer',
+          'Para',
+          'FinPara',
+          'Segun',
+          'Caso',
+          'Defecto',
+          'FinSegun',
+          'Funcion',
+          'FinFuncion',
+          'Retornar',
+        ];
+
+        const best = keywords
+          .map((keyword) => ({
+            keyword,
+            distance: levenshtein(word, keyword.toLowerCase()),
+          }))
+          .sort((left, right) => left.distance - right.distance)[0];
+
+        return best && best.distance <= 3 ? best.keyword : null;
+      }
+
+      function levenshtein(left, right) {
+        const dp = Array.from({ length: left.length + 1 }, () =>
+          Array(right.length + 1).fill(0),
+        );
+
+        for (let i = 0; i <= left.length; i++) {
+          dp[i][0] = i;
+        }
+
+        for (let j = 0; j <= right.length; j++) {
+          dp[0][j] = j;
+        }
+
+        for (let i = 1; i <= left.length; i++) {
+          for (let j = 1; j <= right.length; j++) {
+            const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(
+              dp[i - 1][j] + 1,
+              dp[i][j - 1] + 1,
+              dp[i - 1][j - 1] + cost,
+            );
+          }
+        }
+
+        return dp[left.length][right.length];
+      }
+
+      function findInvalidSyntaxLine() {
+        if (!codeInput) {
+          return null;
+        }
+
+        const sourceLines = codeInput.value.split('\n');
+        for (let index = 0; index < sourceLines.length; index++) {
+          const suggestion = getSyntaxSuggestion(sourceLines[index]);
+          if (suggestion) {
+            return {
+              line: index + 1,
+              text: sourceLines[index].trim(),
+              suggestion,
+            };
+          }
+        }
+
+        return null;
+      }
+
+      function findDuplicateDeclaration() {
+        if (!codeInput) {
+          return null;
+        }
+
+        const declarations = new Map();
+        const sourceLines = codeInput.value.split('\n');
+
+        for (let index = 0; index < sourceLines.length; index++) {
+          const match = sourceLines[index]
+            .trim()
+            .match(/^Definir\s+([A-Za-z][A-Za-z0-9]*)\s+Como\s+(Entero|Real|Cadena|Logico)$/);
+
+          if (!match) {
+            continue;
+          }
+
+          const name = match[1];
+          if (declarations.has(name)) {
+            return {
+              name,
+              firstLine: declarations.get(name),
+              line: index + 1,
+            };
+          }
+
+          declarations.set(name, index + 1);
+        }
+
+        return null;
+      }
+
+      function renderSymbols(symbols) {
+        if (!symbolsOutput) {
+          return;
+        }
+
+        if (!symbols?.length) {
+          symbolsOutput.textContent = 'No se encontraron simbolos.';
+          symbolsOutput.className = 'symbols-table empty';
+          return;
+        }
+
+        const rows = symbols.map((symbol) => `
+          <tr>
+            <td>${escapeHtml(symbol.nombre)}</td>
+            <td>${escapeHtml(symbol.categoria)}</td>
+            <td>${escapeHtml(symbol.tipo)}</td>
+            <td>${escapeHtml(symbol.ambito)}</td>
+            <td>${escapeHtml(symbol.linea ?? '-')}</td>
+          </tr>
+        `).join('');
+
+        symbolsOutput.className = 'symbols-table';
+        symbolsOutput.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Categoria</th>
+                <th>Tipo</th>
+                <th>Ambito</th>
+                <th>Linea</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      }
+
+      function formatCondition(condition) {
+        if (!condition) {
+          return '';
+        }
+
+        return `${condition.left} ${condition.operator} ${condition.right}`;
+      }
+
+      function grammarNode(label, kind = 'nonterminal', children = []) {
+        return { label, kind, children };
+      }
+
+      function terminal(label) {
+        return grammarNode(`"${label}"`, 'terminal');
+      }
+
+      function lexeme(label) {
+        return grammarNode(label || 'vacio', 'lexeme');
+      }
+
+      function nonterminal(label, children = []) {
+        return grammarNode(`<${label}>`, 'nonterminal', children);
+      }
+
+      function expressionNode(expression) {
+        return nonterminal('expresion', [lexeme(expression)]);
+      }
+
+      function conditionNode(condition) {
+        return nonterminal('condicion', [
+          lexeme(condition?.left),
+          lexeme(condition?.operator),
+          lexeme(condition?.right),
+        ]);
+      }
+
+      function blockNode(nodes) {
+        return nonterminal('bloque', [
+          grammarNode('{ <sentencia> }', 'nonterminal'),
+          ...nodes.map(statementNode),
+        ]);
+      }
+
+      function statementNode(node) {
+        return nonterminal('sentencia', [astToGrammarNode(node)]);
+      }
+
+      function astToGrammarNode(node) {
+        switch (node?.type) {
+          case 'PROGRAM':
+            return nonterminal('programa', [
+              terminal('Algoritmo'),
+              nonterminal('identificador', [lexeme(node.name)]),
+              blockNode(node.children || []),
+              terminal('FinAlgoritmo'),
+            ]);
+          case 'DECLARATION':
+            return nonterminal('declaracion', [
+              terminal('Definir'),
+              nonterminal('identificador', [lexeme(node.name)]),
+              terminal('Como'),
+              nonterminal('tipo', [lexeme(node.dataType)]),
+            ]);
+          case 'ASSIGNMENT':
+            return nonterminal('asignacion', [
+              nonterminal('identificador', [lexeme(node.name)]),
+              terminal('<-'),
+              expressionNode(node.expression),
+            ]);
+          case 'PRINT':
+            return nonterminal('escritura', [
+              terminal('Escribir'),
+              expressionNode(node.expression),
+            ]);
+          case 'IF':
+            return nonterminal('si', [
+              terminal('Si'),
+              conditionNode(node.condition),
+              terminal('Entonces'),
+              blockNode(node.children || []),
+              ...(node.elseBranch?.length ? [terminal('Sino'), blockNode(node.elseBranch)] : []),
+              terminal('FinSi'),
+            ]);
+          case 'WHILE':
+            return nonterminal('mientras', [
+              terminal('Mientras'),
+              conditionNode(node.condition),
+              terminal('Hacer'),
+              blockNode(node.children || []),
+              terminal('FinMientras'),
+            ]);
+          case 'DO_WHILE':
+            return nonterminal('hacer_mientras', [
+              terminal('Hacer'),
+              blockNode(node.children || []),
+              terminal('Mientras'),
+              conditionNode(node.condition),
+            ]);
+          case 'FOR':
+            return nonterminal('para', [
+              terminal('Para'),
+              nonterminal('identificador', [lexeme(node.name)]),
+              terminal('<-'),
+              expressionNode(node.value),
+              terminal('Hasta'),
+              expressionNode(node.expression),
+              terminal('Hacer'),
+              blockNode(node.children || []),
+              terminal('FinPara'),
+            ]);
+          case 'SWITCH':
+            return nonterminal('segun', [
+              terminal('Segun'),
+              expressionNode(node.expression),
+              terminal('Hacer'),
+              ...(node.cases || []).map(astToGrammarNode),
+              ...(node.defaultCase ? [astToGrammarNode(node.defaultCase)] : []),
+              terminal('FinSegun'),
+            ]);
+          case 'CASE':
+            return nonterminal('caso', [
+              terminal('Caso'),
+              expressionNode(node.expression),
+              blockNode(node.children || []),
+            ]);
+          case 'DEFAULT':
+            return nonterminal('defecto', [
+              terminal('Defecto'),
+              blockNode(node.children || []),
+            ]);
+          case 'FUNCTION':
+            return nonterminal('funcion', [
+              terminal('Funcion'),
+              nonterminal('identificador', [lexeme(node.name)]),
+              nonterminal('parametros', (node.params || []).map((param) =>
+                nonterminal('parametro', [
+                  nonterminal('identificador', [lexeme(param.name)]),
+                  terminal('Como'),
+                  nonterminal('tipo', [lexeme(param.dataType)]),
+                ]),
+              )),
+              terminal('Como'),
+              nonterminal('tipo_funcion', [lexeme(node.returnType)]),
+              blockNode(node.children || []),
+              terminal('FinFuncion'),
+            ]);
+          case 'RETURN':
+            return nonterminal('retorno', [
+              terminal('Retornar'),
+              expressionNode(node.expression),
+            ]);
+          default:
+            return nonterminal(node?.type || 'nodo');
+        }
+      }
+
+      function renderGrammarNode(node) {
+        const children = node.children?.length
+          ? `<ul>${node.children.map(renderGrammarNode).join('')}</ul>`
+          : '';
+
+        return `
+          <li>
+            <div class="ast-node ast-node-${escapeHtml(node.kind)}">
+              <span class="ast-type">${escapeHtml(node.label)}</span>
+            </div>
+            ${children}
+          </li>
+        `;
+      }
+
+      function partChip(part) {
+        return `<span class="tree-chip tree-chip-${escapeHtml(part.kind)}">${escapeHtml(part.label)}</span>`;
+      }
+
+      function terminalPart(label) {
+        return { kind: 'terminal', label: `"${label}"` };
+      }
+
+      function nonterminalPart(label) {
+        return { kind: 'nonterminal', label: `<${label}>` };
+      }
+
+      function valuePart(label) {
+        return { kind: 'value', label: label || 'vacio' };
+      }
+
+      function getReadableTreeNode(node) {
+        switch (node?.type) {
+          case 'PROGRAM':
+            return {
+              title: '<programa>',
+              parts: [
+                terminalPart('Algoritmo'),
+                valuePart(node.name),
+                nonterminalPart('bloque'),
+                terminalPart('FinAlgoritmo'),
+              ],
+              groups: [{ label: 'bloque', nodes: node.children || [] }],
+            };
+          case 'DECLARATION':
+            return {
+              title: '<declaracion>',
+              parts: [
+                terminalPart('Definir'),
+                valuePart(node.name),
+                terminalPart('Como'),
+                valuePart(node.dataType),
+              ],
+              groups: [],
+            };
+          case 'ASSIGNMENT':
+            return {
+              title: '<asignacion>',
+              parts: [valuePart(node.name), terminalPart('<-'), valuePart(node.expression)],
+              groups: [],
+            };
+          case 'PRINT':
+            return {
+              title: '<escritura>',
+              parts: [terminalPart('Escribir'), valuePart(node.expression)],
+              groups: [],
+            };
+          case 'IF':
+            return {
+              title: '<si>',
+              parts: [
+                terminalPart('Si'),
+                valuePart(formatCondition(node.condition)),
+                terminalPart('Entonces'),
+                nonterminalPart('bloque'),
+                ...(node.elseBranch?.length ? [terminalPart('Sino'), nonterminalPart('bloque')] : []),
+                terminalPart('FinSi'),
+              ],
+              groups: [
+                { label: 'entonces', nodes: node.children || [] },
+                ...(node.elseBranch?.length ? [{ label: 'sino', nodes: node.elseBranch }] : []),
+              ],
+            };
+          case 'WHILE':
+            return {
+              title: '<mientras>',
+              parts: [
+                terminalPart('Mientras'),
+                valuePart(formatCondition(node.condition)),
+                terminalPart('Hacer'),
+                nonterminalPart('bloque'),
+                terminalPart('FinMientras'),
+              ],
+              groups: [{ label: 'bloque', nodes: node.children || [] }],
+            };
+          case 'DO_WHILE':
+            return {
+              title: '<hacer_mientras>',
+              parts: [
+                terminalPart('Hacer'),
+                nonterminalPart('bloque'),
+                terminalPart('Mientras'),
+                valuePart(formatCondition(node.condition)),
+              ],
+              groups: [{ label: 'bloque', nodes: node.children || [] }],
+            };
+          case 'FOR':
+            return {
+              title: '<para>',
+              parts: [
+                terminalPart('Para'),
+                valuePart(node.name),
+                terminalPart('<-'),
+                valuePart(node.value),
+                terminalPart('Hasta'),
+                valuePart(node.expression),
+                terminalPart('Hacer'),
+                nonterminalPart('bloque'),
+                terminalPart('FinPara'),
+              ],
+              groups: [{ label: 'bloque', nodes: node.children || [] }],
+            };
+          case 'SWITCH':
+            return {
+              title: '<segun>',
+              parts: [
+                terminalPart('Segun'),
+                valuePart(node.expression),
+                terminalPart('Hacer'),
+                nonterminalPart('casos'),
+                terminalPart('FinSegun'),
+              ],
+              groups: [
+                { label: 'casos', nodes: node.cases || [] },
+                ...(node.defaultCase ? [{ label: 'defecto', nodes: [node.defaultCase] }] : []),
+              ],
+            };
+          case 'CASE':
+            return {
+              title: '<caso>',
+              parts: [terminalPart('Caso'), valuePart(node.expression), nonterminalPart('bloque')],
+              groups: [{ label: 'bloque', nodes: node.children || [] }],
+            };
+          case 'DEFAULT':
+            return {
+              title: '<defecto>',
+              parts: [terminalPart('Defecto'), nonterminalPart('bloque')],
+              groups: [{ label: 'bloque', nodes: node.children || [] }],
+            };
+          case 'FUNCTION':
+            return {
+              title: '<funcion>',
+              parts: [
+                terminalPart('Funcion'),
+                valuePart(node.name),
+                nonterminalPart('parametros'),
+                terminalPart('Como'),
+                valuePart(node.returnType),
+                nonterminalPart('bloque'),
+                terminalPart('FinFuncion'),
+              ],
+              groups: [
+                {
+                  label: 'parametros',
+                  nodes: (node.params || []).map((param) => ({
+                    type: 'PARAM',
+                    name: param.name,
+                    dataType: param.dataType,
+                  })),
+                },
+                { label: 'bloque', nodes: node.children || [] },
+              ],
+            };
+          case 'PARAM':
+            return {
+              title: '<parametro>',
+              parts: [valuePart(node.name), terminalPart('Como'), valuePart(node.dataType)],
+              groups: [],
+            };
+          case 'RETURN':
+            return {
+              title: '<retorno>',
+              parts: [terminalPart('Retornar'), valuePart(node.expression)],
+              groups: [],
+            };
+          default:
+            return {
+              title: `<${node?.type || 'nodo'}>`,
+              parts: [],
+              groups: [],
+            };
+        }
+      }
+
+      function renderReadableTreeNode(node) {
+        const treeNode = getReadableTreeNode(node);
+        const groups = treeNode.groups
+          .filter((group) => group.nodes.length)
+          .map((group) => `
+            <div class="readable-tree-group">
+              <div class="readable-tree-group-label">${escapeHtml(group.label)}</div>
+              <div class="readable-tree-children">
+                ${group.nodes.map(renderReadableTreeNode).join('')}
+              </div>
+            </div>
+          `).join('');
+
+        return `
+          <article class="readable-tree-node">
+            <div class="readable-tree-card">
+              <div class="readable-tree-title">${escapeHtml(treeNode.title)}</div>
+              <div class="readable-tree-production">${treeNode.parts.map(partChip).join('')}</div>
+            </div>
+            ${groups}
+          </article>
+        `;
+      }
+
+      function measureTree(node) {
+        const nodeWidth = Math.max(82, Math.min(180, node.label.length * 8 + 28));
+        const childLayouts = (node.children || []).map(measureTree);
+        const gap = 26;
+        const childrenWidth = childLayouts.length
+          ? childLayouts.reduce((total, child) => total + child.width, 0) + gap * (childLayouts.length - 1)
+          : 0;
+
+        return {
+          node,
+          nodeWidth,
+          childLayouts,
+          width: Math.max(nodeWidth, childrenWidth),
+          x: 0,
+          y: 0,
+        };
+      }
+
+      function positionTree(layout, left, depth) {
+        const levelHeight = 84;
+        layout.x = left + layout.width / 2;
+        layout.y = 34 + depth * levelHeight;
+
+        const gap = 26;
+        const childrenWidth = layout.childLayouts.length
+          ? layout.childLayouts.reduce((total, child) => total + child.width, 0) + gap * (layout.childLayouts.length - 1)
+          : 0;
+        let childLeft = layout.x - childrenWidth / 2;
+
+        for (const child of layout.childLayouts) {
+          positionTree(child, childLeft, depth + 1);
+          childLeft += child.width + gap;
+        }
+
+        return layout;
+      }
+
+      function getTreeDepth(layout) {
+        if (!layout.childLayouts.length) {
+          return 1;
+        }
+
+        return 1 + Math.max(...layout.childLayouts.map(getTreeDepth));
+      }
+
+      function renderSvgTreeNode(layout) {
+        const nodeHeight = 36;
+        const rx = 6;
+        const nodeX = layout.x - layout.nodeWidth / 2;
+        const nodeY = layout.y;
+        const kind = layout.node.kind === 'nonterminal' ? 'nonterminal' : 'terminal';
+        const isNonTerminal = kind === 'nonterminal';
+        const fill = isNonTerminal ? '#e8ddff' : '#e6f5dd';
+        const stroke = isNonTerminal ? '#8b68d1' : '#82bd70';
+        const textFill = isNonTerminal ? '#34235f' : '#2f5625';
+        const edges = layout.childLayouts.map((child) => `
+          <line
+            class="tree-edge"
+            x1="${layout.x}"
+            y1="${nodeY + nodeHeight}"
+            x2="${child.x}"
+            y2="${child.y - 4}"
+            stroke="rgba(30, 24, 20, 0.82)"
+            stroke-width="2"
+            marker-end="url(#tree-arrow)"
+          />
+        `).join('');
+        const children = layout.childLayouts.map(renderSvgTreeNode).join('');
+
+        return `
+          ${edges}
+          <g class="tree-svg-node tree-svg-node-${kind}">
+            <rect x="${nodeX}" y="${nodeY}" width="${layout.nodeWidth}" height="${nodeHeight}" rx="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="1.6" />
+            <text x="${layout.x}" y="${nodeY + 23}" text-anchor="middle" fill="${textFill}" font-family="Consolas, Courier New, monospace" font-size="13" font-weight="800">${escapeHtml(layout.node.label)}</text>
+          </g>
+          ${children}
+        `;
+      }
+
+      function renderSvgTree(root) {
+        const layout = positionTree(measureTree(root), 24, 0);
+        const width = Math.ceil(layout.width + 48);
+        const height = getTreeDepth(layout) * 84 + 48;
+
+        return `
+          <svg class="tree-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Arbol de analisis sintactico">
+            <rect x="0" y="0" width="${width}" height="${height}" fill="#fbfaf8" />
+            <defs>
+              <marker id="tree-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L8,4 L0,8 Z" fill="rgba(30, 24, 20, 0.82)" />
+              </marker>
+            </defs>
+            ${renderSvgTreeNode(layout)}
+          </svg>
+        `;
+      }
+
+      function renderAstTree(ast) {
+        if (!treeOutput) {
+          return;
+        }
+
+        if (!ast) {
+          treeOutput.textContent = 'Compila para ver el arbol sintactico.';
+          treeOutput.className = 'ast-tree empty';
+          if (downloadTreeButton) {
+            downloadTreeButton.hidden = true;
+          }
+          return;
+        }
+
+        treeOutput.className = 'ast-tree grammar-tree tree-svg-wrap';
+        treeOutput.innerHTML = `
+          <div class="tree-svg-stage">
+            ${renderSvgTree(astToGrammarNode(ast))}
+          </div>
+        `;
+        requestAnimationFrame(() => {
+          treeOutput.scrollLeft = Math.max(0, (treeOutput.scrollWidth - treeOutput.clientWidth) / 2);
+          treeOutput.scrollTop = 0;
+        });
+        if (downloadTreeButton) {
+          downloadTreeButton.hidden = !document.querySelector('.tab.active[data-tab="tree"]');
+        }
+      }
+
+      async function downloadAstTreeImage() {
+        const svg = treeOutput?.querySelector('svg');
+        if (!svg) {
+          return;
+        }
+
+        const serializer = new XMLSerializer();
+        const clonedSvg = svg.cloneNode(true);
+        clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const width = Number(svg.getAttribute('width')) || svg.viewBox.baseVal.width || 1200;
+        const height = Number(svg.getAttribute('height')) || svg.viewBox.baseVal.height || 800;
+        const svgText = serializer.serializeToString(clonedSvg);
+        const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+        const image = new Image();
+
+        image.onload = () => {
+          const scale = 2;
+          const canvas = document.createElement('canvas');
+          canvas.width = width * scale;
+          canvas.height = height * scale;
+          const context = canvas.getContext('2d');
+
+          context.fillStyle = '#fbfaf8';
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.scale(scale, scale);
+          context.drawImage(image, 0, 0);
+          URL.revokeObjectURL(url);
+
+          const link = document.createElement('a');
+          link.download = `arbol-nebula-${Date.now()}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+        };
+
+        image.src = url;
+      }
+
+      function formatError(result) {
+        const details = [];
+        const sourceLine = getSourceLine(result.errorLine);
+
+        if (result.errorType) {
+          details.push(`Tipo: ${result.errorType}`);
+        }
+
+        if (result.errorLine) {
+          details.push(`Linea: ${result.errorLine}`);
+        }
+
+        if (sourceLine) {
+          details.push(`Codigo: ${sourceLine}`);
+        }
+
+        if (result.suggestion) {
+          details.push(`Sugerencia: ${result.suggestion}`);
+        }
+
+        return [result.error || 'Error desconocido.', ...details].join('\n');
+      }
+
+      function showCompileIssue(result) {
+        if (!suggestionsList) {
+          return;
+        }
+
+        const sourceLine = getSourceLine(result.errorLine);
+        const title = result.errorLine
+          ? `Error en linea ${result.errorLine}`
+          : 'Error de compilacion';
+        const text = sourceLine
+          ? `${sourceLine} - ${result.suggestion || result.error || 'Revisa esta linea.'}`
+          : result.suggestion || result.error || 'Revisa el codigo ingresado.';
+
+        suggestionsList.className = 'inline-suggestion visible error';
+        suggestionsList.innerHTML = `
+          <div class="suggestion-badge">${escapeHtml(result.errorLine ? `Linea ${result.errorLine}` : 'Error')}</div>
+          <div class="suggestion-copy">
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(text)}</span>
+          </div>
+        `;
       }
 
       function setExample(code) {
@@ -239,6 +1180,7 @@ FinAlgoritmo`,
             type: 'error',
             title: 'Falta el encabezado',
             text: 'La primera estructura debe verse como: Algoritmo NombreDelPrograma',
+            line: findLineNumber((line) => line.length > 0),
           });
         } else if (/^Algoritmo\s+[A-Za-z][A-Za-z0-9]*/m.test(code)) {
           suggestions.push({
@@ -254,6 +1196,28 @@ FinAlgoritmo`,
             type: 'warn',
             title: 'Revisa una declaracion',
             text: 'Usa este formato: Definir variable Como Entero',
+            line: findLineNumber((line) => line.startsWith('Definir') &&
+              !/^Definir\s+[A-Za-z][A-Za-z0-9]*\s+Como\s+(Entero|Real|Cadena|Logico)$/.test(line)),
+          });
+        }
+
+        const invalidSyntax = findInvalidSyntaxLine();
+        if (invalidSyntax) {
+          suggestions.push({
+            type: 'error',
+            title: 'Regla mal escrita',
+            text: invalidSyntax.suggestion,
+            line: invalidSyntax.line,
+          });
+        }
+
+        const duplicateDeclaration = findDuplicateDeclaration();
+        if (duplicateDeclaration) {
+          suggestions.push({
+            type: 'error',
+            title: 'Variable duplicada',
+            text: `La variable ${duplicateDeclaration.name} ya fue declarada en la linea ${duplicateDeclaration.firstLine}. Cambia el nombre o elimina esta declaracion duplicada.`,
+            line: duplicateDeclaration.line,
           });
         }
 
@@ -262,6 +1226,7 @@ FinAlgoritmo`,
             type: 'warn',
             title: 'Te falta cerrar un Si',
             text: 'Si abres un bloque Si ... Entonces, debes cerrarlo con FinSi.',
+            line: findLineNumber((line) => line.startsWith('Si ')),
           });
         }
 
@@ -270,6 +1235,7 @@ FinAlgoritmo`,
             type: 'warn',
             title: 'Te falta FinMientras',
             text: 'Los ciclos Mientras ... Hacer deben terminar con FinMientras.',
+            line: findLineNumber((line) => line.startsWith('Mientras ')),
           });
         }
 
@@ -278,6 +1244,7 @@ FinAlgoritmo`,
             type: 'warn',
             title: 'Te falta FinPara',
             text: 'Cada bloque Para debe cerrarse con FinPara.',
+            line: findLineNumber((line) => line.startsWith('Para ')),
           });
         }
 
@@ -286,6 +1253,7 @@ FinAlgoritmo`,
             type: 'warn',
             title: 'Falta FinAlgoritmo',
             text: 'Todo programa debe terminar con FinAlgoritmo.',
+            line: findLastCodeLineNumber(),
           });
         } else if (/FinAlgoritmo\s*$/.test(code.trim())) {
           suggestions.push({
@@ -300,15 +1268,27 @@ FinAlgoritmo`,
         if (!topSuggestion) {
           suggestionsList.className = 'inline-suggestion';
           suggestionsList.innerHTML = '';
+          clearEditorErrorLine();
           return;
         }
 
+        if (topSuggestion.line) {
+          setEditorErrorLine(topSuggestion.line);
+        } else {
+          clearEditorErrorLine();
+        }
+
+        const sourceLine = getSourceLine(topSuggestion.line);
+        const suggestionText = sourceLine
+          ? `${sourceLine} - ${topSuggestion.text}`
+          : topSuggestion.text;
+
         suggestionsList.className = `inline-suggestion visible ${topSuggestion.type}`;
         suggestionsList.innerHTML = `
-          <div class="suggestion-badge">${topSuggestion.type === 'error' ? 'Atencion' : 'Consejo'}</div>
+          <div class="suggestion-badge">${escapeHtml(topSuggestion.line ? `Linea ${topSuggestion.line}` : topSuggestion.type === 'error' ? 'Atencion' : 'Consejo')}</div>
           <div class="suggestion-copy">
-            <strong>${topSuggestion.title}</strong>
-            <span>${topSuggestion.text}</span>
+            <strong>${escapeHtml(topSuggestion.line ? `${topSuggestion.title} en linea ${topSuggestion.line}` : topSuggestion.title)}</strong>
+            <span>${escapeHtml(suggestionText)}</span>
           </div>
         `;
       }
@@ -317,6 +1297,7 @@ FinAlgoritmo`,
         const value = codeInput.value;
         localStorage.setItem(draftKey, value);
         draftState.textContent = 'guardado automatico';
+        clearEditorErrorLine();
         syncLineNumbers(value, codeLines);
         updateEditorActiveLine();
         updateSuggestions();
@@ -327,8 +1308,13 @@ FinAlgoritmo`,
         tokensOutput.className = 'codebox mini-box empty';
         astOutput.textContent = 'Compila para ver el AST.';
         astOutput.className = 'codebox mini-box empty';
+        renderSymbols([]);
+        renderAstTree(null);
+        symbolsOutput.textContent = 'Compila para ver la tabla de simbolos.';
+        symbolsOutput.className = 'symbols-table empty';
         errorOutput.textContent = 'Todavia no hay errores ni resultados.';
         errorOutput.className = 'codebox mini-box empty';
+        clearEditorErrorLine();
         javaOutput.textContent = 'Compila para ver el Java generado.';
         javaOutput.className = 'codebox output-codebox empty';
         syncLineNumbers(javaOutput.textContent, javaLines);
@@ -355,10 +1341,14 @@ FinAlgoritmo`,
           tokensOutput.className = 'codebox mini-box';
           astOutput.textContent = formatJson(result.ast || {});
           astOutput.className = 'codebox mini-box';
+          renderSymbols(result.symbolTable || []);
+          renderAstTree(result.ast);
           javaOutput.textContent = result.java || '';
           javaOutput.className = 'codebox output-codebox';
           errorOutput.textContent = 'Sin errores. El backend acepto el programa.';
           errorOutput.className = 'codebox mini-box';
+          clearEditorErrorLine();
+          updateSuggestions();
           syncLineNumbers(javaOutput.textContent, javaLines);
           syncScroll(javaOutput, javaLines);
           resetTerminal();
@@ -368,10 +1358,14 @@ FinAlgoritmo`,
           tokensOutput.className = 'codebox mini-box empty';
           astOutput.textContent = 'No disponible por error.';
           astOutput.className = 'codebox mini-box empty';
+          renderSymbols(result.symbolTable || []);
+          renderAstTree(null);
           javaOutput.textContent = 'No se genero Java.';
           javaOutput.className = 'codebox output-codebox empty';
-          errorOutput.textContent = result.error || 'Error desconocido.';
+          errorOutput.textContent = formatError(result);
           errorOutput.className = 'codebox mini-box';
+          setEditorErrorLine(result.errorLine);
+          showCompileIssue(result);
           syncLineNumbers(javaOutput.textContent, javaLines);
           syncScroll(javaOutput, javaLines);
           resetTerminal();
@@ -533,6 +1527,9 @@ FinAlgoritmo`,
           document.querySelectorAll('.tab-panel').forEach((panel) => panel.classList.remove('active'));
           tab.classList.add('active');
           document.querySelector(`[data-panel=\"${tab.dataset.tab}\"]`).classList.add('active');
+          if (downloadTreeButton) {
+            downloadTreeButton.hidden = tab.dataset.tab !== 'tree' || !treeOutput?.querySelector('svg');
+          }
         });
       });
 
@@ -574,6 +1571,9 @@ FinAlgoritmo`,
       }
       if (rulesCloseButton) {
         rulesCloseButton.addEventListener('click', closeRulesModal);
+      }
+      if (downloadTreeButton) {
+        downloadTreeButton.addEventListener('click', downloadAstTreeImage);
       }
       rulesTabs.forEach((tab) => {
         tab.addEventListener('click', () => activateRulesTab(tab.dataset.rulesTab));
