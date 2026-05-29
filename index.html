@@ -69,7 +69,10 @@
               </div>
               <div class="panel-body">
                 <pre id="code-lines" class="line-numbers" aria-hidden="true">1</pre>
+                <div id="diagnostic-layer" class="diagnostic-layer" aria-hidden="true"></div>
                 <textarea id="code-input" class="codebox codebox-editor" spellcheck="false"></textarea>
+                <div id="diagnostic-tooltip" class="diagnostic-tooltip" hidden></div>
+                <div id="autocomplete-menu" class="autocomplete-menu" role="listbox" hidden></div>
               </div>
             </div>
             <div id="suggestions-list" class="inline-suggestion" aria-live="polite"></div>
@@ -273,7 +276,7 @@ FinAlgoritmo</code></pre>
               <h3>Resultados de Apoyo</h3>
             </div>
             <div class="result-tabs">
-              <button class="secondary small tab active" data-tab="errors">Errores</button>
+              <button class="secondary small tab active" data-tab="errors">Problemas</button>
               <button class="secondary small tab" data-tab="symbols">Simbolos</button>
               <button class="secondary small tab" data-tab="tree">Arbol</button>
               <button class="secondary small tab" data-tab="tokens">Tokens</button>
@@ -282,7 +285,7 @@ FinAlgoritmo</code></pre>
             </div>
           </div>
           <div class="tab-panel active" data-panel="errors">
-            <pre id="error-output" class="codebox mini-box empty">Todavia no hay errores ni resultados.</pre>
+            <div id="error-output" class="problems-panel empty">Todavia no hay errores ni resultados.</div>
           </div>
           <div class="tab-panel" data-panel="symbols">
             <div id="symbols-output" class="symbols-table empty">Compila para ver la tabla de simbolos.</div>
@@ -291,7 +294,7 @@ FinAlgoritmo</code></pre>
             <div id="tree-output" class="ast-tree empty">Compila para ver el arbol sintactico.</div>
           </div>
           <div class="tab-panel" data-panel="tokens">
-            <pre id="tokens-output" class="codebox mini-box empty">Compila para ver los tokens.</pre>
+            <div id="tokens-output" class="tokens-table empty">Compila para ver los tokens.</div>
           </div>
           <div class="tab-panel" data-panel="ast">
             <pre id="ast-output" class="codebox mini-box empty">Compila para ver el AST.</pre>

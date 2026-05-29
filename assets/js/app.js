@@ -77,10 +77,45 @@ FinAlgoritmo`,
       const downloadTreeButton = document.getElementById('download-tree-button');
       const rulesTabs = document.querySelectorAll('.rules-tab');
       const suggestionsList = document.getElementById('suggestions-list');
+      const diagnosticLayer = document.getElementById('diagnostic-layer');
+      const diagnosticTooltip = document.getElementById('diagnostic-tooltip');
+      const autocompleteMenu = document.getElementById('autocomplete-menu');
       const historyList = document.getElementById('history-list');
       const backendStatus = document.getElementById('backend-status');
       const draftState = document.getElementById('draft-state');
       let lastResult = null;
+      let liveAnalysisTimer = null;
+      let liveAnalysisRequest = 0;
+      let autocompleteItems = [];
+      let autocompleteIndex = 0;
+
+      const completionItems = [
+        { label: 'Algoritmo', insert: 'Algoritmo MiPrograma', kind: 'palabra' },
+        { label: 'FinAlgoritmo', insert: 'FinAlgoritmo', kind: 'palabra' },
+        { label: 'Definir', insert: 'Definir variable Como Entero', kind: 'palabra' },
+        { label: 'Como', insert: 'Como ', kind: 'palabra' },
+        { label: 'Entero', insert: 'Entero', kind: 'tipo' },
+        { label: 'Real', insert: 'Real', kind: 'tipo' },
+        { label: 'Cadena', insert: 'Cadena', kind: 'tipo' },
+        { label: 'Logico', insert: 'Logico', kind: 'tipo' },
+        { label: 'Si', insert: 'Si condicion Entonces\n\nFinSi', kind: 'plantilla' },
+        { label: 'Entonces', insert: 'Entonces', kind: 'palabra' },
+        { label: 'Sino', insert: 'Sino', kind: 'palabra' },
+        { label: 'FinSi', insert: 'FinSi', kind: 'palabra' },
+        { label: 'Mientras', insert: 'Mientras condicion Hacer\n\nFinMientras', kind: 'plantilla' },
+        { label: 'Hacer', insert: 'Hacer', kind: 'palabra' },
+        { label: 'FinMientras', insert: 'FinMientras', kind: 'palabra' },
+        { label: 'Para', insert: 'Para i <- 1 Hasta 10 Hacer\n\nFinPara', kind: 'plantilla' },
+        { label: 'Hasta', insert: 'Hasta', kind: 'palabra' },
+        { label: 'FinPara', insert: 'FinPara', kind: 'palabra' },
+        { label: 'Segun', insert: 'Segun opcion Hacer\nCaso 1\n\nDefecto\n\nFinSegun', kind: 'plantilla' },
+        { label: 'Caso', insert: 'Caso ', kind: 'palabra' },
+        { label: 'Defecto', insert: 'Defecto', kind: 'palabra' },
+        { label: 'FinSegun', insert: 'FinSegun', kind: 'palabra' },
+        { label: 'Funcion', insert: 'Funcion Nombre(param Como Entero) Como Entero\n\nFinFuncion', kind: 'plantilla' },
+        { label: 'Retornar', insert: 'Retornar ', kind: 'palabra' },
+        { label: 'FinFuncion', insert: 'FinFuncion', kind: 'palabra' },
+      ];
 
       function formatJson(value) {
         return JSON.stringify(value, null, 2);
@@ -127,6 +162,8 @@ FinAlgoritmo`,
           editorPanel.style.setProperty('--error-line-offset', `${errorOffset}px`);
           editorPanel.style.setProperty('--error-line-height', `${lineHeight}px`);
         }
+
+        renderDiagnosticMarkers(lastResult?.diagnostics || []);
       }
 
       function setEditorErrorLine(line) {
@@ -149,6 +186,94 @@ FinAlgoritmo`,
         editorPanel.classList.remove('has-error-line');
         editorPanel.style.removeProperty('--error-line-offset');
         editorPanel.style.removeProperty('--error-line-height');
+      }
+
+      function renderDiagnosticMarkers(diagnostics = []) {
+        if (!diagnosticLayer || !codeInput) {
+          return;
+        }
+
+        diagnosticLayer.innerHTML = '';
+        if (!diagnostics.length) {
+          return;
+        }
+
+        const lineHeight = parseFloat(getComputedStyle(codeInput).lineHeight) || 24;
+        const paddingTop = parseFloat(getComputedStyle(codeInput).paddingTop) || 18;
+        const visibleDiagnostics = diagnostics.slice(0, 80);
+
+        visibleDiagnostics.forEach((diagnostic) => {
+          const marker = document.createElement('div');
+          marker.className = `diagnostic-marker ${diagnostic.severity || 'error'}`;
+          marker.style.top = `${paddingTop + ((diagnostic.line || 1) - 1) * lineHeight - codeInput.scrollTop}px`;
+          marker.style.height = `${lineHeight}px`;
+          marker.title = `${diagnostic.message || 'Diagnostico'} ${diagnostic.suggestion || ''}`.trim();
+          diagnosticLayer.appendChild(marker);
+        });
+      }
+
+      function clearDiagnostics() {
+        if (diagnosticLayer) {
+          diagnosticLayer.innerHTML = '';
+        }
+        hideDiagnosticTooltip();
+      }
+
+      function getDiagnosticIcon(severity = 'error') {
+        if (severity === 'warning') {
+          return '!';
+        }
+
+        if (severity === 'info') {
+          return 'i';
+        }
+
+        return 'x';
+      }
+
+      function getDiagnosticsForLine(lineNumber) {
+        return (lastResult?.diagnostics || []).filter((diagnostic) => diagnostic.line === lineNumber);
+      }
+
+      function getLineFromMouseEvent(event) {
+        if (!codeInput) {
+          return 0;
+        }
+
+        const rect = codeInput.getBoundingClientRect();
+        const lineHeight = parseFloat(getComputedStyle(codeInput).lineHeight) || 24;
+        const paddingTop = parseFloat(getComputedStyle(codeInput).paddingTop) || 18;
+        return Math.max(1, Math.floor((event.clientY - rect.top + codeInput.scrollTop - paddingTop) / lineHeight) + 1);
+      }
+
+      function showDiagnosticTooltip(event) {
+        if (!diagnosticTooltip || !codeInput) {
+          return;
+        }
+
+        const line = getLineFromMouseEvent(event);
+        const diagnostics = getDiagnosticsForLine(line);
+
+        if (!diagnostics.length) {
+          hideDiagnosticTooltip();
+          return;
+        }
+
+        const first = diagnostics[0];
+        diagnosticTooltip.hidden = false;
+        diagnosticTooltip.style.top = `${Math.max(18, event.offsetY + 14)}px`;
+        diagnosticTooltip.innerHTML = `
+          <strong>${escapeHtml(`Linea ${first.line}, columna ${first.column} - ${first.stage || 'Analisis'}`)}</strong>
+          <div>${escapeHtml(first.message || 'Diagnostico')}</div>
+          ${first.suggestion ? `<div>${escapeHtml(`Sugerencia: ${first.suggestion}`)}</div>` : ''}
+        `;
+      }
+
+      function hideDiagnosticTooltip() {
+        if (diagnosticTooltip) {
+          diagnosticTooltip.hidden = true;
+          diagnosticTooltip.innerHTML = '';
+        }
       }
 
       function escapeHtml(value) {
@@ -469,6 +594,72 @@ FinAlgoritmo`,
                 <th>Tipo</th>
                 <th>Ambito</th>
                 <th>Linea</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      }
+
+      function getTokenKindClass(type) {
+        if (type === 'IDENTIFICADOR') {
+          return 'identifier';
+        }
+
+        if (['NUMERO', 'CADENA', 'BOOLEANO', 'TIPO_DATO'].includes(type)) {
+          return 'literal';
+        }
+
+        if (['ASIGNACION', 'OPERADOR_RELACIONAL', 'OPERADOR_ARITMETICO'].includes(type)) {
+          return 'operator';
+        }
+
+        return '';
+      }
+
+      function formatTokenValue(token) {
+        if (token.value === '\\n') {
+          return 'salto de linea';
+        }
+
+        return token.value;
+      }
+
+      function renderTokens(tokens) {
+        if (!tokensOutput) {
+          return;
+        }
+
+        if (!tokens?.length) {
+          tokensOutput.textContent = 'No se encontraron tokens.';
+          tokensOutput.className = 'tokens-table empty';
+          return;
+        }
+
+        const rows = tokens.map((token, index) => {
+          const kindClass = getTokenKindClass(token.type);
+
+          return `
+            <tr>
+              <td class="token-position">${index + 1}</td>
+              <td><span class="token-type-pill ${escapeHtml(kindClass)}">${escapeHtml(token.type)}</span></td>
+              <td class="token-value">${escapeHtml(formatTokenValue(token))}</td>
+              <td class="token-position">${escapeHtml(token.line)}</td>
+              <td class="token-position">${escapeHtml(token.column)}</td>
+            </tr>
+          `;
+        }).join('');
+
+        tokensOutput.className = 'tokens-table';
+        tokensOutput.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Tipo</th>
+                <th>Valor</th>
+                <th>Linea</th>
+                <th>Columna</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -1015,6 +1206,16 @@ FinAlgoritmo`,
       }
 
       function formatError(result) {
+        if (result.diagnostics?.length) {
+          return result.diagnostics.map((diagnostic, index) => {
+            const location = `Linea ${diagnostic.line || '-'}, columna ${diagnostic.column || '-'}`;
+            const stage = diagnostic.stage ? ` [${diagnostic.stage}]` : '';
+            const source = diagnostic.source ? `\nCodigo: ${diagnostic.source}` : '';
+            const suggestion = diagnostic.suggestion ? `\nSugerencia: ${diagnostic.suggestion}` : '';
+            return `${index + 1}. ${location}${stage}\nError: ${diagnostic.message}${source}${suggestion}`;
+          }).join('\n\n');
+        }
+
         const details = [];
         const sourceLine = getSourceLine(result.errorLine);
 
@@ -1037,22 +1238,160 @@ FinAlgoritmo`,
         return [result.error || 'Error desconocido.', ...details].join('\n');
       }
 
+      function getQuickFixLabel(diagnostic) {
+        const message = diagnostic?.message || '';
+
+        if (message.includes('Entonces')) {
+          return 'Insertar Entonces';
+        }
+
+        if (message.includes('FinSi')) {
+          return 'Agregar FinSi';
+        }
+
+        if (message.includes('FinAlgoritmo')) {
+          return 'Agregar FinAlgoritmo';
+        }
+
+        return '';
+      }
+
+      function renderProblemsPanel(result) {
+        if (!errorOutput) {
+          return;
+        }
+
+        const diagnostics = result?.diagnostics || [];
+
+        if (!diagnostics.length) {
+          errorOutput.className = 'problems-panel empty';
+          errorOutput.textContent = result?.ok
+            ? 'Sin problemas. El backend acepto el programa.'
+            : 'Todavia no hay errores ni resultados.';
+          return;
+        }
+
+        const counts = diagnostics.reduce((summary, diagnostic) => {
+          const severity = diagnostic.severity || 'error';
+          summary[severity] = (summary[severity] || 0) + 1;
+          return summary;
+        }, {});
+
+        errorOutput.className = 'problems-panel';
+        errorOutput.innerHTML = `
+          <div class="problems-summary">
+            <span>${counts.error || 0} errores</span>
+            <span>${counts.warning || 0} advertencias</span>
+            <span>${counts.info || 0} info</span>
+          </div>
+          ${diagnostics.map((diagnostic, index) => {
+            const severity = diagnostic.severity || 'error';
+            const quickFix = getQuickFixLabel(diagnostic);
+
+            return `
+              <button class="problem-item" type="button" data-problem-index="${index}">
+                <span class="problem-icon ${escapeHtml(severity)}">${escapeHtml(getDiagnosticIcon(severity))}</span>
+                <span class="problem-main">
+                  <span class="problem-title">${escapeHtml(diagnostic.message || 'Diagnostico')}</span>
+                  <span class="problem-meta">${escapeHtml(`Linea ${diagnostic.line || '-'}, columna ${diagnostic.column || '-'} - ${diagnostic.stage || 'Analisis'}`)}</span>
+                  ${diagnostic.source ? `<span class="problem-source">${escapeHtml(diagnostic.source)}</span>` : ''}
+                  ${diagnostic.suggestion ? `<span class="problem-suggestion">${escapeHtml(diagnostic.suggestion)}</span>` : ''}
+                </span>
+                ${quickFix ? `<span class="quick-fix-button" data-quick-fix="${index}">${escapeHtml(quickFix)}</span>` : '<span></span>'}
+              </button>
+            `;
+          }).join('')}
+        `;
+      }
+
+      function getIndexFromLineColumn(line, column) {
+        const lines = codeInput.value.split('\n');
+        const safeLine = Math.max(1, Math.min(line || 1, lines.length));
+        const safeColumn = Math.max(1, column || 1);
+        let index = 0;
+
+        for (let i = 0; i < safeLine - 1; i++) {
+          index += lines[i].length + 1;
+        }
+
+        return Math.min(index + safeColumn - 1, codeInput.value.length);
+      }
+
+      function focusDiagnostic(diagnostic) {
+        if (!diagnostic || !codeInput) {
+          return;
+        }
+
+        const index = getIndexFromLineColumn(diagnostic.line, diagnostic.column);
+        codeInput.focus();
+        codeInput.setSelectionRange(index, index);
+        setEditorErrorLine(diagnostic.line);
+        updateEditorActiveLine();
+      }
+
+      function insertTextAtIndex(index, text) {
+        codeInput.value = `${codeInput.value.slice(0, index)}${text}${codeInput.value.slice(index)}`;
+        const cursor = index + text.length;
+        codeInput.setSelectionRange(cursor, cursor);
+        handleEditorChange();
+      }
+
+      function applyQuickFixForDiagnostic(diagnostic) {
+        if (!diagnostic || !codeInput) {
+          return;
+        }
+
+        const message = diagnostic.message || '';
+        const lines = codeInput.value.split('\n');
+
+        if (message.includes('Entonces')) {
+          const lineIndex = Math.max(0, (diagnostic.line || 1) - 1);
+          const current = lines[lineIndex] || '';
+          if (!/\bEntonces\s*$/.test(current)) {
+            lines[lineIndex] = `${current.replace(/\s+$/, '')} Entonces`;
+            codeInput.value = lines.join('\n');
+            const cursor = getIndexFromLineColumn(lineIndex + 1, lines[lineIndex].length + 1);
+            codeInput.setSelectionRange(cursor, cursor);
+            handleEditorChange();
+          }
+          return;
+        }
+
+        if (message.includes('FinSi')) {
+          const finAlgoritmoIndex = lines.findIndex((line) => line.trim() === 'FinAlgoritmo');
+          const insertLine = finAlgoritmoIndex >= 0 ? finAlgoritmoIndex : lines.length;
+          lines.splice(insertLine, 0, 'FinSi');
+          codeInput.value = lines.join('\n');
+          const cursor = getIndexFromLineColumn(insertLine + 1, 1);
+          codeInput.setSelectionRange(cursor, cursor);
+          handleEditorChange();
+          return;
+        }
+
+        if (message.includes('FinAlgoritmo')) {
+          const needsNewLine = codeInput.value.trim().length > 0 && !codeInput.value.endsWith('\n');
+          insertTextAtIndex(codeInput.value.length, `${needsNewLine ? '\n' : ''}FinAlgoritmo`);
+        }
+      }
+
       function showCompileIssue(result) {
         if (!suggestionsList) {
           return;
         }
 
-        const sourceLine = getSourceLine(result.errorLine);
-        const title = result.errorLine
-          ? `Error en linea ${result.errorLine}`
+        const firstDiagnostic = result.diagnostics?.[0];
+        const line = firstDiagnostic?.line || result.errorLine;
+        const sourceLine = firstDiagnostic?.source || getSourceLine(line);
+        const title = line
+          ? `Error en linea ${line}, columna ${firstDiagnostic?.column || 1}`
           : 'Error de compilacion';
         const text = sourceLine
-          ? `${sourceLine} - ${result.suggestion || result.error || 'Revisa esta linea.'}`
-          : result.suggestion || result.error || 'Revisa el codigo ingresado.';
+          ? `${sourceLine} - ${firstDiagnostic?.suggestion || result.suggestion || result.error || 'Revisa esta linea.'}`
+          : firstDiagnostic?.suggestion || result.suggestion || result.error || 'Revisa el codigo ingresado.';
 
         suggestionsList.className = 'inline-suggestion visible error';
         suggestionsList.innerHTML = `
-          <div class="suggestion-badge">${escapeHtml(result.errorLine ? `Linea ${result.errorLine}` : 'Error')}</div>
+          <div class="suggestion-badge">${escapeHtml(line ? `Linea ${line}` : 'Error')}</div>
           <div class="suggestion-copy">
             <strong>${escapeHtml(title)}</strong>
             <span>${escapeHtml(text)}</span>
@@ -1293,6 +1632,115 @@ FinAlgoritmo`,
         `;
       }
 
+      function getCurrentWord() {
+        const caret = codeInput.selectionStart || 0;
+        const beforeCaret = codeInput.value.slice(0, caret);
+        const match = beforeCaret.match(/[A-Za-z][A-Za-z0-9]*$/);
+        return {
+          word: match?.[0] || '',
+          start: caret - (match?.[0]?.length || 0),
+          end: caret,
+        };
+      }
+
+      function renderAutocomplete() {
+        if (!autocompleteMenu || !codeInput) {
+          return;
+        }
+
+        const current = getCurrentWord();
+        if (!current.word) {
+          hideAutocomplete();
+          return;
+        }
+
+        const lowerWord = current.word.toLowerCase();
+        autocompleteItems = completionItems
+          .filter((item) => item.label.toLowerCase().startsWith(lowerWord))
+          .slice(0, 8);
+
+        if (!autocompleteItems.length) {
+          hideAutocomplete();
+          return;
+        }
+
+        autocompleteIndex = Math.min(autocompleteIndex, autocompleteItems.length - 1);
+        autocompleteMenu.hidden = false;
+        autocompleteMenu.innerHTML = autocompleteItems.map((item, index) => `
+          <div class="autocomplete-item ${index === autocompleteIndex ? 'active' : ''}" role="option" data-index="${index}">
+            <span>${escapeHtml(item.label)}</span>
+            <span class="autocomplete-kind">${escapeHtml(item.kind)}</span>
+          </div>
+        `).join('');
+      }
+
+      function hideAutocomplete() {
+        if (!autocompleteMenu) {
+          return;
+        }
+
+        autocompleteMenu.hidden = true;
+        autocompleteMenu.innerHTML = '';
+        autocompleteItems = [];
+        autocompleteIndex = 0;
+      }
+
+      function applyAutocomplete(index = autocompleteIndex) {
+        const item = autocompleteItems[index];
+        if (!item) {
+          return false;
+        }
+
+        const current = getCurrentWord();
+        const before = codeInput.value.slice(0, current.start);
+        const after = codeInput.value.slice(current.end);
+        codeInput.value = `${before}${item.insert}${after}`;
+        const cursor = before.length + item.insert.length;
+        codeInput.setSelectionRange(cursor, cursor);
+        hideAutocomplete();
+        handleEditorChange();
+        return true;
+      }
+
+      function scheduleLiveAnalysis() {
+        clearTimeout(liveAnalysisTimer);
+        liveAnalysisTimer = setTimeout(runLiveAnalysis, 300);
+      }
+
+      async function runLiveAnalysis() {
+        const code = codeInput.value.trim();
+        const requestId = ++liveAnalysisRequest;
+
+        if (!code) {
+          lastResult = null;
+          clearDiagnostics();
+          return;
+        }
+
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ code }),
+          });
+          const result = await response.json();
+
+          if (requestId !== liveAnalysisRequest) {
+            return;
+          }
+
+          showResult(result, { live: true });
+        } catch {
+          if (requestId !== liveAnalysisRequest) {
+            return;
+          }
+
+          renderDiagnosticMarkers([]);
+        }
+      }
+
       function handleEditorChange() {
         const value = codeInput.value;
         localStorage.setItem(draftKey, value);
@@ -1301,11 +1749,13 @@ FinAlgoritmo`,
         syncLineNumbers(value, codeLines);
         updateEditorActiveLine();
         updateSuggestions();
+        renderAutocomplete();
+        scheduleLiveAnalysis();
       }
 
       function setIdleOutputs() {
         tokensOutput.textContent = 'Compila para ver los tokens.';
-        tokensOutput.className = 'codebox mini-box empty';
+        tokensOutput.className = 'tokens-table empty';
         astOutput.textContent = 'Compila para ver el AST.';
         astOutput.className = 'codebox mini-box empty';
         renderSymbols([]);
@@ -1313,8 +1763,10 @@ FinAlgoritmo`,
         symbolsOutput.textContent = 'Compila para ver la tabla de simbolos.';
         symbolsOutput.className = 'symbols-table empty';
         errorOutput.textContent = 'Todavia no hay errores ni resultados.';
-        errorOutput.className = 'codebox mini-box empty';
+        errorOutput.className = 'problems-panel empty';
+        clearDiagnostics();
         clearEditorErrorLine();
+        hideAutocomplete();
         javaOutput.textContent = 'Compila para ver el Java generado.';
         javaOutput.className = 'codebox output-codebox empty';
         syncLineNumbers(javaOutput.textContent, javaLines);
@@ -1333,42 +1785,53 @@ FinAlgoritmo`,
         terminalOutput.className = 'terminal-box empty';
       }
 
-      function showResult(result) {
+      function showResult(result, options = {}) {
         lastResult = result;
+        const diagnostics = result.diagnostics || [];
+        renderDiagnosticMarkers(diagnostics);
 
         if (result.ok) {
-          tokensOutput.textContent = formatJson(result.tokens || []);
-          tokensOutput.className = 'codebox mini-box';
+          renderTokens(result.tokens || []);
           astOutput.textContent = formatJson(result.ast || {});
           astOutput.className = 'codebox mini-box';
           renderSymbols(result.symbolTable || []);
           renderAstTree(result.ast);
           javaOutput.textContent = result.java || '';
           javaOutput.className = 'codebox output-codebox';
-          errorOutput.textContent = 'Sin errores. El backend acepto el programa.';
-          errorOutput.className = 'codebox mini-box';
+          renderProblemsPanel(result);
           clearEditorErrorLine();
-          updateSuggestions();
+          if (!diagnostics.length) {
+            updateSuggestions();
+          } else {
+            showCompileIssue(result);
+          }
           syncLineNumbers(javaOutput.textContent, javaLines);
           syncScroll(javaOutput, javaLines);
-          resetTerminal();
-          autoSaveHistory();
+          if (!options.live) {
+            resetTerminal();
+            autoSaveHistory();
+          }
         } else {
-          tokensOutput.textContent = 'No disponible por error.';
-          tokensOutput.className = 'codebox mini-box empty';
-          astOutput.textContent = 'No disponible por error.';
-          astOutput.className = 'codebox mini-box empty';
+          if (result.tokens?.length) {
+            renderTokens(result.tokens);
+          } else {
+            tokensOutput.textContent = 'No disponible por error.';
+            tokensOutput.className = 'tokens-table empty';
+          }
+          astOutput.textContent = result.ast ? formatJson(result.ast) : 'No disponible por error.';
+          astOutput.className = result.ast ? 'codebox mini-box' : 'codebox mini-box empty';
           renderSymbols(result.symbolTable || []);
-          renderAstTree(null);
+          renderAstTree(result.ast || null);
           javaOutput.textContent = 'No se genero Java.';
           javaOutput.className = 'codebox output-codebox empty';
-          errorOutput.textContent = formatError(result);
-          errorOutput.className = 'codebox mini-box';
-          setEditorErrorLine(result.errorLine);
+          renderProblemsPanel(result);
+          setEditorErrorLine(diagnostics[0]?.line || result.errorLine);
           showCompileIssue(result);
           syncLineNumbers(javaOutput.textContent, javaLines);
           syncScroll(javaOutput, javaLines);
-          resetTerminal();
+          if (!options.live) {
+            resetTerminal();
+          }
         }
       }
 
@@ -1553,6 +2016,30 @@ FinAlgoritmo`,
         }
       });
 
+      errorOutput.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+
+        const quickFixTarget = target.closest('[data-quick-fix]');
+        if (quickFixTarget) {
+          event.preventDefault();
+          event.stopPropagation();
+          const diagnostic = lastResult?.diagnostics?.[Number(quickFixTarget.dataset.quickFix)];
+          applyQuickFixForDiagnostic(diagnostic);
+          return;
+        }
+
+        const item = target.closest('[data-problem-index]');
+        if (!item) {
+          return;
+        }
+
+        const diagnostic = lastResult?.diagnostics?.[Number(item.dataset.problemIndex)];
+        focusDiagnostic(diagnostic);
+      });
+
       compileButton.addEventListener('click', compileCode);
       healthButton.addEventListener('click', runGeneratedJava);
       if (saveHistoryButton) {
@@ -1617,20 +2104,73 @@ FinAlgoritmo`,
       codeInput.addEventListener('input', handleEditorChange);
       codeInput.addEventListener('scroll', () => {
         syncScroll(codeInput, codeLines);
+        hideDiagnosticTooltip();
         updateEditorActiveLine();
       });
-      codeInput.addEventListener('click', updateEditorActiveLine);
-      codeInput.addEventListener('keyup', updateEditorActiveLine);
+      codeInput.addEventListener('click', () => {
+        updateEditorActiveLine();
+        renderAutocomplete();
+      });
+      codeInput.addEventListener('keyup', () => {
+        updateEditorActiveLine();
+        renderAutocomplete();
+      });
       codeInput.addEventListener('focus', updateEditorActiveLine);
+      codeInput.addEventListener('mousemove', showDiagnosticTooltip);
+      codeInput.addEventListener('mouseleave', hideDiagnosticTooltip);
       javaOutput.addEventListener('scroll', () => syncScroll(javaOutput, javaLines));
       codeInput.addEventListener('keydown', (event) => {
+        if (!autocompleteMenu?.hidden && autocompleteItems.length) {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            autocompleteIndex = (autocompleteIndex + 1) % autocompleteItems.length;
+            renderAutocomplete();
+            return;
+          }
+
+          if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            autocompleteIndex = (autocompleteIndex - 1 + autocompleteItems.length) % autocompleteItems.length;
+            renderAutocomplete();
+            return;
+          }
+
+          if (event.key === 'Enter' || event.key === 'Tab') {
+            event.preventDefault();
+            applyAutocomplete();
+            return;
+          }
+
+          if (event.key === 'Escape') {
+            hideAutocomplete();
+            return;
+          }
+        }
+
         if (event.ctrlKey && event.key === 'Enter') {
           event.preventDefault();
           compileCode();
         }
       });
+      if (autocompleteMenu) {
+        autocompleteMenu.addEventListener('mousedown', (event) => {
+          const target = event.target;
+          if (!(target instanceof Element)) {
+            return;
+          }
+
+          const item = target.closest('.autocomplete-item');
+          if (!item) {
+            return;
+          }
+
+          event.preventDefault();
+          applyAutocomplete(Number(item.dataset.index));
+        });
+      }
       document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
+          hideAutocomplete();
           closeRulesModal();
         }
       });
